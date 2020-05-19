@@ -37,7 +37,7 @@ def textToDuration(uptimeStr: String) = {
   Try(Duration.parse(pt)).toOption
 }
 
-def format(kvps: scala.collection.mutable.Map[String, String]) = for {
+def format(device: String, kvps: scala.collection.mutable.Map[String, String]) = for {
   interface <- kvps.get("interface")
   ip <- kvps.get("last-ip")
   mac <- kvps.get("mac-address")
@@ -51,7 +51,7 @@ def format(kvps: scala.collection.mutable.Map[String, String]) = for {
   signalToNoise <- Try(new BigInteger(signalToNoiseStr)).toOption
   comment = kvps.get("comment")
 } yield {
-  val tags = Map("interface" -> interface, "ip" -> ip, "mac" -> mac) ++ comment.map(c => Map("comment" -> c)).getOrElse(Map.empty)
+  val tags = Map("device" -> device, "interface" -> interface, "ip" -> ip, "mac" -> mac) ++ comment.map(c => Map("comment" -> c)).getOrElse(Map.empty)
 
   List(
      Metric(Keys.signalToNoise, signalToNoise, tags),
@@ -61,10 +61,14 @@ def format(kvps: scala.collection.mutable.Map[String, String]) = for {
   )
 }
 
-val con = ApiConnection.connect(sys.env("MIKROTIK_IP"))
-con.login(sys.env("MIKROTIK_USER"), sys.env("MIKROTIK_PASSWORD"))
-val clients = con.execute("/interface/wireless/registration-table/print without-paging stats").asScala.toList
+val devices = sys.env("MIKROTIK_IPS").split(",").map(_.trim)
 
-clients.flatMap(map => format(map.asScala)).flatten.map(_.toString).foreach(println)
+devices.foreach { ip =>
+  val con = ApiConnection.connect(ip)
+  con.login(sys.env("MIKROTIK_USER"), sys.env("MIKROTIK_PASSWORD"))
+  val clients = con.execute("/interface/wireless/registration-table/print without-paging stats").asScala.toList
 
-con.close()
+  clients.flatMap(map => format(ip, map.asScala)).flatten.map(_.toString).foreach(println)
+
+  con.close()
+}
